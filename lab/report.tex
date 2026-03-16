@@ -1,0 +1,56 @@
+\documentclass{ctexart}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{a4paper, left=1in, right=1in, top=1in, bottom=1in}
+\usepackage{minted}
+\usepackage{enumitem}
+
+\title{《深度学习基础》第一次实验报告}
+\author{PB24000150 李欣宸}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+本文是我《深度学习基础》的实验报告。实验结果（包含必要的图表）和对实验结果的分析在 \ref{sec:results-and-discussions} 节；实验总结和经验将包含在 \ref{sec:conclusion} 中。
+
+\section{实验设置} \label{sec:experimental-setup}
+
+\paragraph{数据集} 本次实验使用的是糖尿病疾病进展数据集（Diabetes dataset），包含442个样本，每个样本有10个医学特征，作为预测目标；训练前我们对输入进行了标准化处理。
+
+\paragraph{模型架构} 参考实验要求，基线模型的架构选择为：2 层隐藏层，每层 16 个神经元，激活函数 ReLU，Adam 优化器，学习率 0.001，训练 500 个 epoch；后续的各项消融实验都将基于此架构进行调整。
+
+\paragraph{训练指标} 后续实验将以 5 折交叉验证（5-fold cross-validation）的平均均方误差（Mean Squared Error, MSE）作为主要评估指标（\textit{最好}的 epoch）；此外，训练损失以及它们在训练过程中的变化也会作为辅助分析的指标。
+
+\section{结果与讨论} \label{sec:results-and-discussions}
+
+\subsection{主要结果}
+
+\subsection{消融实验}
+
+\paragraph{网络深度的影响}
+
+\begin{itemize}[noitemsep]
+
+    \item 该实验中我们固定学习率为 0.01，否则训练太慢难以看出效果；我们对比了 1、2、3 隐藏层的模型；
+    \item \textbf{误差曲线}：我们发现训练误差递减，验证误差先递减后递增（过拟合）；2、3 隐藏层的模型过拟合较为明显，而 1 隐藏层的模型只有少量的过拟合现象，可能与模型的表达能力弱有关（隐藏节点只有 16 个）；
+    \item \textbf{训练速度}：3 隐藏层的达到测试集最优（25）快于 2 隐藏层（45）和 1 隐藏层（119）；
+
+\end{itemize}
+
+\paragraph{学习率的影响}
+
+我们对比了 $10^{-1}$、$10^{-2}$、$10^{-3}$、$10^{-4}$ 四种学习率；结果显示：
+
+\paragraph{激活函数的影响}
+
+我们对比了 Sigmoid、Tanh、ReLU、LeakyReLU、Swish 五种激活函数；结果显示：
+
+\section{结论} \label{sec:conclusion}
+
+\end{document}
