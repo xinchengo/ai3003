@@ -79,6 +79,102 @@ class MultiLayerPerceptron(nn.Module):
     
     def forward(self, x):
         return self.model(x)
+
+
+def collect_hidden_preactivations(
+        model: nn.Module,
+        X: torch.Tensor,
+        batch_size: int = 256,
+    ):
+    """Collect pre-activation tensors for all hidden linear layers."""
+
+    model.eval()
+    dataset = torch.utils.data.TensorDataset(X)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+    linear_layers = [layer for layer in model.model if isinstance(layer, nn.Linear)]
+    hidden_linear_count = max(len(linear_layers) - 1, 0)
+    preactivation_chunks = [[] for _ in range(hidden_linear_count)]
+
+    with torch.no_grad():
+        for (X_batch,) in dataloader:
+            h = X_batch
+            linear_idx = 0
+            for layer in model.model:
+                h = layer(h)
+                if isinstance(layer, nn.Linear) and linear_idx < hidden_linear_count:
+                    preactivation_chunks[linear_idx].append(h.detach().cpu())
+                    linear_idx += 1
+
+    return [torch.cat(chunks, dim=0) if chunks else torch.empty(0) for chunks in preactivation_chunks]
+
+
+def analyze_activation_pathologies(
+        model: nn.Module,
+        X: torch.Tensor,
+        sample_threshold: float = 0.9,
+        saturation_threshold: float = 37.0,
+        batch_size: int = 256,
+    ):
+    """Analyze dead neurons (ReLU) or saturated neurons (Sigmoid/Tanh)."""
+
+    preactivations = collect_hidden_preactivations(
+        model=model,
+        X=X,
+        batch_size=batch_size,
+    )
+
+    activation = getattr(model, 'activation', None)
+    if activation not in {'relu', 'sigmoid', 'tanh'}:
+        return {
+            'activation': activation,
+            'issue_type': None,
+            'total_hidden_units': int(sum(p.shape[1] for p in preactivations if p.ndim == 2)),
+            'affected_units': 0,
+            'affected_ratio': 0.0,
+            'sample_threshold': sample_threshold,
+            'saturation_threshold': saturation_threshold,
+            'layer_breakdown': [],
+        }
+
+    issue_type = 'dead_neuron' if activation == 'relu' else 'vanishing_gradient'
+    layer_breakdown = []
+    total_hidden_units = 0
+    affected_units = 0
+
+    for layer_idx, z in enumerate(preactivations, start=1):
+        if z.ndim != 2 or z.shape[0] == 0:
+            continue
+
+        if activation == 'relu':
+            affected_fraction = (z <= 0).float().mean(dim=0)
+        else:
+            affected_fraction = (z.abs() >= saturation_threshold).float().mean(dim=0)
+
+        affected_mask = affected_fraction >= sample_threshold
+        layer_units = int(z.shape[1])
+        layer_affected = int(affected_mask.sum().item())
+
+        total_hidden_units += layer_units
+        affected_units += layer_affected
+
+        layer_breakdown.append({
+            'layer': layer_idx,
+            'units': layer_units,
+            'affected_units': layer_affected,
+            'affected_ratio': layer_affected / layer_units if layer_units else 0.0,
+        })
+
+    return {
+        'activation': activation,
+        'issue_type': issue_type,
+        'total_hidden_units': total_hidden_units,
+        'affected_units': affected_units,
+        'affected_ratio': affected_units / total_hidden_units if total_hidden_units else 0.0,
+        'sample_threshold': sample_threshold,
+        'saturation_threshold': saturation_threshold,
+        'layer_breakdown': layer_breakdown,
+    }
     
 def train_model(
         model : nn.Module,
