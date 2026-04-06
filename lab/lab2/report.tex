@@ -1,0 +1,149 @@
+\documentclass{ctexart}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{enumitem}
+\geometry{a4paper, left=1in, right=1in, top=1in, bottom=1in}
+
+\title{《深度学习基础》第二次实验报告}
+\author{PB24000150 李欣宸}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+本文是《深度学习基础》第二次实验报告。代码实现主要在 \verb|load.ipynb| 与 \verb|cnn.py| 中；其中 notebook 里定义了统一的 \verb|train_model| 实验入口，用于完成三组对比实验、测试集评估、混淆矩阵与错分样本分析。
+
+\section{实验设置}
+
+\paragraph{数据集}
+本实验使用 Fashion-MNIST 数据集，共包含 60000 张训练图像和 10000 张测试图像，图像大小为 $28 \times 28$，均为单通道灰度图。训练前对输入进行了标准化处理，所用均值和标准差分别为 0.2860 与 0.3530。
+
+\paragraph{数据划分}
+将原始训练集按 $5:1$ 划分为训练集与验证集，即 50000 张训练图像与 10000 张验证图像；测试集保持官方划分不变。训练与验证阶段均采用批量大小 512。
+
+\paragraph{基线模型}
+基线模型采用 3 层卷积结构，通道数依次为 $32 \rightarrow 64 \rightarrow 128$，前两层后接池化层，卷积核大小为 $3 \times 3$，池化方式为 Max Pooling；同时使用 Batch Normalization 与 $0.1$ 的 Dropout。训练时采用 Adam 优化器，学习率为 $10^{-3}$，损失函数为交叉熵，训练 8 个 epoch，并根据验证准确率保存最佳模型参数。
+
+\paragraph{评估指标}
+各组对比实验主要比较最佳验证准确率与验证损失；最终模型在测试集上报告分类准确率与损失，并结合混淆矩阵分析易混淆类别。由于 MPS 后端存在轻微非确定性，不同轮次重训的结果会有极小波动，但整体趋势稳定。
+
+\section{结果与讨论}
+
+\subsection{主要结果}
+
+基线模型在第 8 个 epoch 取得了 $91.55\%$ 的最佳验证准确率。三组对比实验中，Average Pooling 版本在一次完整对比中取得了最高的验证准确率 $91.70\%$，略优于基线的 Max Pooling；在最终单独重训并用于测试评估时，该模型在第 7 个 epoch 达到最佳验证准确率 $91.49\%$，测试集准确率为 $91.28\%$，测试损失为 0.2492。
+
+从整体曲线看，6 个候选模型都在前 3--4 个 epoch 快速提升，随后逐渐进入平台区。这说明 Fashion-MNIST 任务本身并不需要特别长的训练周期；当网络规模继续增大时，更容易出现训练集持续上升而验证集提升有限的现象，说明过深或过大的模型在该任务上并没有带来同等幅度的泛化收益。
+
+\subsection{对比实验}
+
+\paragraph{网络深度的影响}
+
+\begin{table}[htbp]
+\centering
+\caption{不同网络深度的验证结果}
+\label{tab:depth-ablation}
+\begin{tabular}{c|c|c|c}
+模型 & 参数量 & 最佳 epoch & 最佳验证准确率 \\
+\hline
+2 层卷积 & 50378 & 8 & 90.76\% \\
+3 层卷积 & 155850 & 8 & 91.55\% \\
+4 层卷积 & 303690 & 7 & 91.52\% \\
+\end{tabular}
+\end{table}
+
+从表 \ref{tab:depth-ablation} 可以看到，网络从 2 层加深到 3 层时，验证准确率由 $90.76\%$ 提升到 $91.55\%$，说明额外的卷积层确实增强了特征提取能力；但继续增加到 4 层后，验证准确率几乎不再提升，测试准确率还略有下降。这一现象说明对于 $28 \times 28$ 的小尺寸灰度图像，3 层卷积已经足以提取大部分有效模式，继续加深主要带来参数增长和更高的过拟合风险，而不是稳定的性能提升。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/depth_ablation.png}
+    \caption{网络深度对验证准确率与验证损失的影响}
+    \label{fig:depth-ablation}
+\end{figure}
+
+\paragraph{卷积核大小的影响}
+
+\begin{table}[htbp]
+\centering
+\caption{不同卷积核大小的验证结果}
+\label{tab:kernel-ablation}
+\begin{tabular}{c|c|c|c}
+卷积核大小 & 参数量 & 最佳 epoch & 最佳验证准确率 \\
+\hline
+$3 \times 3$ & 155850 & 8 & 91.55\% \\
+$5 \times 5$ & 320202 & 6 & 91.30\% \\
+$7 \times 7$ & 566730 & 7 & 90.97\% \\
+\end{tabular}
+\end{table}
+
+实验结果表明，小卷积核的表现最好。其原因在于：对于 Fashion-MNIST 这类局部边缘和纹理较为明显的图像，$3 \times 3$ 卷积核已经足以捕获局部结构；更大的卷积核虽然感受野更大，但会显著增加参数量，也更容易把细粒度边缘信息过早平滑掉。尤其是 $7 \times 7$ 卷积核，参数量超过基线的 3 倍，但验证准确率反而下降，说明其计算开销与表示收益并不匹配。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/kernel_ablation.png}
+    \caption{卷积核大小对验证准确率与验证损失的影响}
+    \label{fig:kernel-ablation}
+\end{figure}
+
+\paragraph{池化方式的影响}
+
+\begin{table}[htbp]
+\centering
+\caption{不同池化方式的验证结果}
+\label{tab:pooling-ablation}
+\begin{tabular}{c|c|c|c}
+池化方式 & 参数量 & 最佳 epoch & 最佳验证准确率 \\
+\hline
+Max Pooling & 155850 & 8 & 91.55\% \\
+Average Pooling & 155850 & 8 & 91.70\% \\
+\end{tabular}
+\end{table}
+
+在本实验中，Average Pooling 的验证准确率略优于 Max Pooling，但两者差距非常小。这说明池化方式对最终性能的影响弱于网络深度与卷积核大小。一个可能原因是 Fashion-MNIST 图像本身较为平滑、轮廓结构清晰，Average Pooling 在保留整体形状信息方面略占优势；而 Max Pooling 更强调局部最强响应，对边缘和局部纹理更敏感，因此两者在该数据集上都能工作，只是 Average Pooling 在当前结构下略微更稳。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/pooling_ablation.png}
+    \caption{池化方式对验证准确率与验证损失的影响}
+    \label{fig:pooling-ablation}
+\end{figure}
+
+\subsection{测试集分析}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.82\textwidth]{figures/confusion_matrix.png}
+    \caption{最终模型在测试集上的混淆矩阵}
+    \label{fig:confusion-matrix}
+\end{figure}
+
+从混淆矩阵可以看到，模型对 \texttt{Trouser}、\texttt{Bag}、\texttt{Sandal}、\texttt{Ankle boot} 等类别识别较稳定，而对上衣类样本的区分最困难。最终一次测试中，最常见的错误包括：
+
+\begin{itemize}[noitemsep]
+    \item \texttt{Shirt} 被分成 \texttt{T-shirt/top}：100 次；
+    \item \texttt{Shirt} 被分成 \texttt{Coat}：83 次；
+    \item \texttt{Pullover} 被分成 \texttt{Coat}：81 次；
+    \item \texttt{T-shirt/top} 被分成 \texttt{Shirt}：76 次；
+    \item \texttt{Ankle boot} 被分成 \texttt{Sneaker}：43 次。
+\end{itemize}
+
+这些错分基本符合数据集本身的视觉特点：\texttt{T-shirt/top}、\texttt{Shirt}、\texttt{Pullover}、\texttt{Coat} 在灰度图中主要依赖轮廓和袖口形状区分，而这些差异较细微；鞋类中的 \texttt{Sneaker} 与 \texttt{Ankle boot} 也有相似的边缘结构，因此在低分辨率下容易混淆。相比之下，裤子、包等类别的外形更稳定，故准确率更高。
+
+\section{结论}
+
+本实验完成了基于 CNN 的 Fashion-MNIST 分类任务，并围绕网络深度、卷积核大小、池化方式三项因素进行了对比分析。主要结论如下：
+
+\begin{itemize}[noitemsep]
+    \item 深度方面，3 层卷积相较 2 层有明显提升，但继续加深到 4 层几乎没有进一步收益；
+    \item 卷积核方面，$3 \times 3$ 小卷积核表现最好，更大的卷积核带来了更多参数，但没有带来更好的泛化；
+    \item 池化方式方面，Average Pooling 略优于 Max Pooling，但差距较小，说明二者都能适应该任务；
+    \item 最终模型在测试集上取得了约 $91.3\%$ 的分类准确率，说明一个规模适中的 CNN 已能较好完成 Fashion-MNIST 分类。
+\end{itemize}
+
+综合来看，Fashion-MNIST 更需要“合适的结构”而不是“尽可能大的模型”：适中的深度、较小的卷积核以及稳定的训练配置，是本实验中效果最好的组合。
+
+\end{document}
