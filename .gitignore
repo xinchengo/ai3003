@@ -3,4 +3,5 @@
 .vscode
 __pycache__
 .conda
+.ipynb_checkpoints
 lab/lab2/data
