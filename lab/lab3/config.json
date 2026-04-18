@@ -1,0 +1,89 @@
+{
+    "dataset": {
+        "train": "data/train.csv",
+        "test": "data/test.csv"
+    },
+    "preprocess": {
+        "char-config1": {
+            "type": "char-level",
+            "normalization_scheme": "sch2",
+            "min_occurences": 100,
+            "clip_length": 256
+        },
+        "word-config1": {
+            "type": "word-level",
+            "normalization_scheme": "sch2",
+            "vocab_size": 16384,
+            "clip_length": 256
+        },
+        "bpe-config1": {
+            "type": "bpe",
+            "normalization_scheme": "sch2",
+            "vocab_size": 16384,
+            "clip_length": 256
+        },
+        "bpe-hf-config1": {
+            "type": "bpe-hf",
+            "normalization_scheme": "sch2",
+            "vocab_size": 16384,
+            "clip_length": 256
+        }
+    },
+    "model": {
+        "transformer-config1": {
+            "type": "transformer",
+            "embedding_dim": 128,
+            "num_layers": 2,
+            "num_heads": 4,
+            "dropout_rate": 0.1,
+            "positional_encoding": "sinusoidal"
+        }
+    },
+    "train": {
+        "end2end-config1": {
+            "tokenizer": "bpe-hf-config1",
+            "model": "transformer-config1",
+            "sequence": [
+                {
+                    "type": "label_supervised",
+                    "data_augmentation": [],
+                    "batch_size": 64,
+                    "num_epochs": 10,
+                    "learning_rate": 1e-3,
+                    "scheduler": {
+                        "type": "cosine",
+                        "warmup_steps": 1000
+                    }
+                }
+            ]
+        },
+        "pretrain_then_finetune-config": {
+            "tokenizer": "bpe-hf-config1",
+            "model": "transformer-config1",
+            "sequence": [
+                {
+                    "type": "pretrain",
+                    "data_augmentation": ["random_masking"],
+                    "batch_size": 64,
+                    "num_epochs": 10,
+                    "learning_rate": 1e-3,
+                    "scheduler": {
+                        "type": "cosine",
+                        "warmup_steps": 1000
+                    }
+                },
+                {
+                    "type": "finetune",
+                    "data_augmentation": [],
+                    "batch_size": 64,
+                    "num_epochs": 10,
+                    "learning_rate": 1e-4,
+                    "scheduler": {
+                        "type": "cosine",
+                        "warmup_steps": 1000
+                    }
+                }
+            ]
+        }
+    }
+}

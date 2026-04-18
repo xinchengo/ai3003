@@ -4,4 +4,10 @@
 __pycache__
 .conda
 .ipynb_checkpoints
+*.tar.gz
+
 lab/lab2/data
+lab/lab3/data
+lab/lab3/results
+lab/lab3/wandb
+lab/lab3/analyze.ipynb

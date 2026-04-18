@@ -10,13 +10,13 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset
 
-def load_data(csv_path='imdb_sentiment_data.csv'):
+def load_data(csv_path='./data/imdb_sentiment_data.csv'):
 
     df = pd.read_csv(csv_path)
     print(f"Dataset loaded. Total samples: {len(df)}")
     return df
 
-def load_and_preprocess_data(csv_path='imdb_sentiment_data.csv', max_vocab_size=30000, max_seq_len=200, train_ratio=0.8):
+def load_and_preprocess_data(csv_path='./data/imdb_sentiment_data.csv', max_vocab_size=30000, max_seq_len=200, train_ratio=0.8):
 
     df = load_data(csv_path)
     
