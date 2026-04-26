@@ -5,9 +5,13 @@ __pycache__
 .conda
 .ipynb_checkpoints
 *.tar.gz
+.env
 
 lab/lab2/data
 lab/lab3/data
 lab/lab3/results
 lab/lab3/wandb
 lab/lab3/analyze.ipynb
+lab/lab3/analyze_visualization_and_mlp.py
+lab/lab3/analyze_token_gradients.py
+lab/lab3/figures/*.png

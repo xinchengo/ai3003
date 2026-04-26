@@ -1,75 +1,224 @@
 {
     "dataset": {
         "train": "data/train.csv",
+        "val": "data/val.csv",
         "test": "data/test.csv"
     },
     "preprocess": {
-        "char-config1": {
+        "char-config": {
             "type": "char-level",
             "normalization_scheme": "sch2",
             "min_occurences": 100,
             "clip_length": 256
         },
-        "word-config1": {
+        "word-config": {
             "type": "word-level",
             "normalization_scheme": "sch2",
             "vocab_size": 16384,
             "clip_length": 256
         },
-        "bpe-config1": {
+        "bpe-config": {
             "type": "bpe",
             "normalization_scheme": "sch2",
             "vocab_size": 16384,
             "clip_length": 256
         },
-        "bpe-hf-config1": {
+        "bpe-hf-base": {
             "type": "bpe-hf",
             "normalization_scheme": "sch2",
-            "vocab_size": 16384,
             "clip_length": 256
+        },
+        "bpe-hf-long": {
+            "inherit": "bpe-hf-base",
+            "clip_length": 1024
+        },
+        "bpe-hf-v13c8": {
+            "inherit": "bpe-hf-base",
+            "vocab_size": 8192
+        },
+        "bpe-hf-v14c8": {
+            "inherit": "bpe-hf-v13c8",
+            "vocab_size": 16384
+        },
+        "bpe-hf-v15c8": {
+            "inherit": "bpe-hf-v14c8",
+            "vocab_size": 32768
+        },
+        "bpe-hf-v16c8": {
+            "inherit": "bpe-hf-v15c8",
+            "vocab_size": 65536
         }
     },
     "model": {
-        "transformer-config1": {
+        "transformer-base": {
             "type": "transformer",
             "embedding_dim": 128,
             "num_layers": 2,
             "num_heads": 4,
-            "dropout_rate": 0.1,
-            "positional_encoding": "sinusoidal"
+            "ff_ratio": 2,
+            "dropout_rate": 0.5,
+            "positional_encoding": "sinusoidal",
+            "max_seq_len": 256,
+            "causal_attention": false,
+            "mixed_precision": false
+        },
+        "transformer-sinusoidal-base": {
+            "inherit": "transformer-base"
+        },
+        "transformer-rotary-base": {
+            "inherit": "transformer-base",
+            "positional_encoding": "rotary"
+        },
+        "transformer-nopos-base": {
+            "inherit": "transformer-base",
+            "positional_encoding": "none"
+        },
+        "transformer-rotary-causal": {
+            "inherit": "transformer-base",
+            "positional_encoding": "rotary",
+            "causal_attention": true
+        },
+        "rnn-base": {
+            "type": "rnn",
+            "embedding_dim": 128,
+            "hidden_dim": 128,
+            "num_layers": 2,
+            "dropout_rate": 0.5,
+            "bidirectional": true,
+            "mixed_precision": false
+        },
+        "mlp-base": {
+            "type": "mlp",
+            "embedding_dim": 128,
+            "hidden_dim": 128,
+            "mlp_depth": 2,
+            "dropout_rate": 0.5,
+            "mixed_precision": false
+        },
+        "mlp-tiny": {
+            "inherit": "mlp-base",
+            "embedding_dim": 32,
+            "hidden_dim": 32,
+            "mlp_depth": 1
+        },
+        "mlp-nano": {
+            "inherit": "mlp-base",
+            "embedding_dim": 2,
+            "hidden_dim": 32,
+            "mlp_depth": 1
         }
     },
     "train": {
-        "end2end-config1": {
-            "tokenizer": "bpe-hf-config1",
-            "model": "transformer-config1",
+        "end2end-base": {
+            "tokenizer": "bpe-hf-v14c8",
+            "model": "transformer-sinusoidal-base",
             "sequence": [
                 {
                     "type": "label_supervised",
                     "data_augmentation": [],
-                    "batch_size": 64,
-                    "num_epochs": 10,
+                    "batch_size": 256,
+                    "num_epochs": 30,
+                    "save_interval": 0,
+                    "load_full_data": false,
                     "learning_rate": 1e-3,
                     "scheduler": {
                         "type": "cosine",
-                        "warmup_steps": 1000
+                        "warmup_steps": 5
                     }
                 }
             ]
         },
+        "end2end-rotary-base": {
+            "inherit": "end2end-base",
+            "model": "transformer-rotary-base"
+        },
+        "end2end-v13-rotary": {
+            "inherit": "end2end-rotary-base",
+            "tokenizer": "bpe-hf-v13c8"
+        },
+        "end2end-v14-rotary": {
+            "inherit": "end2end-rotary-base",
+            "tokenizer": "bpe-hf-v14c8"
+        },
+        "end2end-v15-rotary": {
+            "inherit": "end2end-rotary-base",
+            "tokenizer": "bpe-hf-v15c8"
+        },
+        "end2end-v16-rotary": {
+            "inherit": "end2end-rotary-base",
+            "tokenizer": "bpe-hf-v16c8"
+        },
+        "end2end-v14-sinusoidal": {
+            "inherit": "end2end-base"
+        },
+        "end2end-v14-nopos": {
+            "inherit": "end2end-base",
+            "model": "transformer-nopos-base"
+        },
+        "end2end-v14-rotary-causal": {
+            "inherit": "end2end-base",
+            "model": "transformer-rotary-causal"
+        },
+        "end2end-rnn-base": {
+            "inherit": "end2end-base",
+            "model": "rnn-base",
+            "sequence": [
+                {
+                    "type": "label_supervised",
+                    "data_augmentation": [],
+                    "batch_size": 256,
+                    "num_epochs": 50,
+                    "save_interval": 0,
+                    "load_full_data": false,
+                    "learning_rate": 1e-4,
+                    "scheduler": {
+                        "type": "cosine",
+                        "warmup_steps": 5
+                    }
+                }
+            ]
+        },
+        "end2end-rnn-v14": {
+            "inherit": "end2end-rnn-base",
+            "tokenizer": "bpe-hf-v14c8"
+        },
+        "end2end-mlp-base": {
+            "inherit": "end2end-base",
+            "model": "mlp-base"
+        },
+        "end2end-mlp-tiny": {
+            "inherit": "end2end-base",
+            "model": "mlp-tiny"
+        },
+        "end2end-mlp-nano": {
+            "inherit": "end2end-base",
+            "model": "mlp-nano"
+        },
+        "end2end-rotary-causal": {
+            "inherit": "end2end-base",
+            "model": "transformer-rotary-causal"
+        },
+        "end2end-rotary-config1": {
+            "inherit": "end2end-rotary-base",
+            "model": "transformer-rotary-base"
+        },
+        "end2end-nopos-config1": {
+            "inherit": "end2end-rotary-config1",
+            "model": "transformer-nopos-base"
+        },
         "pretrain_then_finetune-config": {
-            "tokenizer": "bpe-hf-config1",
-            "model": "transformer-config1",
+            "inherit": "end2end-base",
             "sequence": [
                 {
                     "type": "pretrain",
                     "data_augmentation": ["random_masking"],
-                    "batch_size": 64,
-                    "num_epochs": 10,
+                    "batch_size": 256,
+                    "num_epochs": 50,
+                    "save_interval": 0,
+                    "load_full_data": true,
                     "learning_rate": 1e-3,
                     "scheduler": {
-                        "type": "cosine",
-                        "warmup_steps": 1000
+                        "type": "constant"
                     }
                 },
                 {
@@ -77,10 +226,11 @@
                     "data_augmentation": [],
                     "batch_size": 64,
                     "num_epochs": 10,
+                    "load_full_data": false,
                     "learning_rate": 1e-4,
                     "scheduler": {
                         "type": "cosine",
-                        "warmup_steps": 1000
+                        "warmup_steps": 5
                     }
                 }
             ]

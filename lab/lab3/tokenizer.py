@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from collections import Counter
 
 import unicodedata
+from config_utils import load_config
 
 @dataclass(frozen=True)
 class TokenizerConfig:
@@ -32,11 +33,10 @@ class TokenizerConfig:
     
     @classmethod
     def from_json(cls, json_file: str, name: str) -> TokenizerConfig:
-        with open(json_file, "r") as f:
-            config_dict = json.load(f)["preprocess"].get(name, None)
-            if config_dict is None:
-                raise ValueError(f"Tokenizer config {name} not found in {json_file}")
-            return cls(name=name, **config_dict)
+        config_dict = load_config(json_file)["preprocess"].get(name, None)
+        if config_dict is None:
+            raise ValueError(f"Tokenizer config {name} not found in {json_file}")
+        return cls(name=name, **config_dict)
 
 @dataclass(frozen=True)
 class Encoding:
@@ -473,6 +473,59 @@ def _get_cached_config(tokenizer_name: str) -> Optional[Dict[str, Any]]:
             return json.load(f)
     return None
 
+def _load_cached_tokenizer(config: TokenizerConfig) -> Optional[BaseTokenizer]:
+    cached_config = _get_cached_config(config.name)
+    if cached_config is None \
+        or TokenizerConfig.differs_in(config, TokenizerConfig(**cached_config),
+                            keys=["type", "normalization_scheme",
+                                  "vocab_size", "min_occurences"]):
+        return None
+    cached_tokenizer_path = f"{tokenizer_base_path}/{config.name}/tokenizer.pkl"
+    if not os.path.exists(cached_tokenizer_path):
+        return None
+    with open(cached_tokenizer_path, "rb") as f:
+        return pickle.load(f)
+
+def get_tokenizer(
+    name: Optional[str] = None,
+    config: TokenizerConfig = None,
+    dataset: str = "train",
+) -> BaseTokenizer:
+    if config is None:
+        if name is None:
+            raise ValueError("Either name or config must be provided")
+        config = TokenizerConfig.from_json("config.json", name)
+
+    tokenizer = _load_cached_tokenizer(config)
+    if tokenizer is not None:
+        return tokenizer
+
+    tokenizer_type = config.type
+    dataset_path = load_config("config.json").get("dataset").get(dataset, None)
+    if dataset_path is None:
+        raise ValueError(f"Dataset path not found for {dataset} in config.json")
+
+    import pandas as pd
+    df = pd.read_csv(dataset_path)
+    kwargs = {"normalization_scheme": config.normalization_scheme}
+    if tokenizer_type == "char-level" and config.min_occurences is not None:
+        kwargs["min_occurences"] = config.min_occurences
+    elif tokenizer_type in ["word-level", "bpe", "bpe-hf"] and config.vocab_size is not None:
+        kwargs["vocab_size"] = config.vocab_size
+
+    tokenizer = _get_tokenizer(tokenizer_type).from_corpus(
+        corpus=df["review"].values,
+        **kwargs
+    )
+
+    tokenizer_cache_path = f"{tokenizer_base_path}/{config.name}/tokenizer.pkl"
+    os.makedirs(os.path.dirname(tokenizer_cache_path), exist_ok=True)
+    with open(tokenizer_cache_path, "wb") as f:
+        pickle.dump(tokenizer, f)
+    with open(f"{tokenizer_base_path}/{config.name}/config.json", "w") as f:
+        json.dump(config.__dict__, f)
+    return tokenizer
+
 def _load_clipped_dataset(config: TokenizerConfig, dataset: str):
     cached_config = _get_cached_config(config.name)
     if cached_config is None \
@@ -533,8 +586,7 @@ def _tokenize_dataset_from_cache(config: TokenizerConfig, dataset: str):
         
         print(f"Tokenizing dataset {dataset} using cached tokenizer"
               f"for {config.name}...")
-        with open("config.json", "r") as f:
-            dataset_path = json.load(f).get("dataset").get(dataset, None)
+        dataset_path = load_config("config.json").get("dataset").get(dataset, None)
         if dataset_path is None:
             raise ValueError(f"Dataset path not found for {dataset} in config.json")
         import pandas as pd
@@ -556,8 +608,7 @@ def _train_tokenizer_from_config(
     
     # build the corpus from the dataset
     corpus = []
-    with open("config.json", "r") as f:
-        dataset_path = json.load(f).get("dataset").get(dataset, None)
+    dataset_path = load_config("config.json").get("dataset").get(dataset, None)
     if dataset_path is None:
         raise ValueError(f"Dataset path not found for {dataset} in config.json")
     import pandas as pd

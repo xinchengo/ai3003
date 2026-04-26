@@ -2,8 +2,6 @@
 import argparse
 from trainer import train_pipeline, evaluate
 
-import modal
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=
         "Helper script for AI3003 lab3: Sentiment Analysis\n")
@@ -13,6 +11,8 @@ if __name__ == "__main__":
                         help="Name of the config in config.json to use")
     parser.add_argument("--path", type=str, help="Optional argument to specify"
                         " checkpoint path for evaluation")
+    parser.add_argument("--datasets", nargs="+", default=["train", "val"],
+                        help="Datasets to evaluate: train val test")
 
     args = parser.parse_args()
 
@@ -22,4 +22,10 @@ if __name__ == "__main__":
     elif args.mode == "eval":
         if not args.path:
             raise ValueError("--path is required for evaluation mode")
-        evaluate(args.config, args.path)
+        results = evaluate(args.config, args.path, datasets=args.datasets)
+        for dataset, metrics in results.items():
+            print(
+                f"{dataset}: accuracy={metrics['accuracy']:.4f}, "
+                f"f1={metrics['f1']:.4f}"
+            )
+        
