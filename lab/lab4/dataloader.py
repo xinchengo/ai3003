@@ -1,8 +1,7 @@
 import os
 
 import torch
-from torchvision import datasets
-from torchvision.transforms import v2
+from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
 
 # Helper functions for the CIFAKE dataset
@@ -30,10 +29,8 @@ def get_image_list(data_dir: str = "./data/CIFAKE", partition: str = "train"):
 
 
 def _build_imagefolder(data_dir: str, partition: str):
-    transform = v2.Compose([
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),
-    ])
+    # ImageFolder yields PIL images -> convert to float32 tensor in [0, 1]
+    transform = transforms.ToTensor()
     return datasets.ImageFolder(os.path.join(data_dir, partition), transform=transform)
 
 
@@ -185,7 +182,9 @@ def get_simclr_cifar10_transform(
     color_jitter_strength: float = 0.5,
     use_blur: bool = False,
 ):
-    color_jitter = v2.ColorJitter(
+    # Applied to cached tensors (C,H,W) float32 in [0, 1].
+    # Keep v1-only and tensor-compatible (do NOT add ToTensor here).
+    color_jitter = transforms.ColorJitter(
         brightness=0.8 * color_jitter_strength,
         contrast=0.8 * color_jitter_strength,
         saturation=0.8 * color_jitter_strength,
@@ -193,50 +192,42 @@ def get_simclr_cifar10_transform(
     )
     
     transform_list = [
-        v2.RandomResizedCrop(
-            size = image_size,
-            scale = (0.08, 1.0), # NOTE: 0.08 is quite agressive for 32x32 images
-            ratio = (3.0 / 4.0, 4.0 / 3.0),
+        transforms.RandomResizedCrop(
+            size=image_size,
+            scale=(0.08, 1.0),  # NOTE: 0.08 is quite agressive for 32x32 images
+            ratio=(3.0 / 4.0, 4.0 / 3.0),
         ),
-        v2.RandomHorizontalFlip(p=0.5),
-        v2.RandomApply([color_jitter], p=0.8),
-        v2.RandomGrayscale(p=0.2),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomApply([color_jitter], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
     ]
 
     if use_blur:
         kernel_size = 5
 
         transform_list.append(
-            v2.RandomApply(
-                [v2.GaussianBlur(kernel_size=kernel_size, sigma=(0.1, 2.0))],
+            transforms.RandomApply(
+                [transforms.GaussianBlur(kernel_size=kernel_size, sigma=(0.1, 2.0))],
                 p=0.5,
             )
         )
         
-    transform_list.extend(
-        [
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(CIFAR10_MEAN, CIFAR10_STD),
-        ]
-    )
-    
-    return v2.Compose(transform_list)
+    transform_list.append(transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD))
+
+    return transforms.Compose(transform_list)
 
 
 def get_cifar10_classification_transform(train: bool = False):
     transform_list = []
     if train:
         transform_list.extend([
-            v2.RandomCrop(32, padding=4),
-            v2.RandomHorizontalFlip(p=0.5),
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(p=0.5),
         ])
     transform_list.extend([
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),
-        v2.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+        transforms.Normalize(CIFAR10_MEAN, CIFAR10_STD),
     ])
-    return v2.Compose(transform_list)
+    return transforms.Compose(transform_list)
 
 def get_cifar10_simclr_dataloader(
     data_dir: str = "./data/r10/pretrain.pth",

@@ -88,6 +88,7 @@ def pretrain_simclr(
     checkpoint_dir = None,
     save_interval: int = 0,
     mixed_precision: bool = True,
+    sync_cuda: bool = False,
     start_epoch: int = 0,
     config = None,
 ):
@@ -97,7 +98,7 @@ def pretrain_simclr(
     
     for epoch in range(num_epochs):
         global_epoch = start_epoch + epoch + 1
-        if device.type == "cuda":
+        if sync_cuda and device.type == "cuda":
             torch.cuda.synchronize()
         start_time = time.perf_counter()
         model.train()
@@ -129,7 +130,7 @@ def pretrain_simclr(
             batch_wait_start = time.perf_counter()
         
         avg_loss = total_loss / len(dataloader)
-        if device.type == "cuda":
+        if sync_cuda and device.type == "cuda":
             torch.cuda.synchronize()
         epoch_time = time.perf_counter() - start_time
         compute_time = max(epoch_time - data_time, 0.0)
