@@ -32,7 +32,7 @@ if modal is not None:
     results = modal.Volume.from_name("ai3003-lab4-results", create_if_missing=True)
     image = (
         modal.Image.debian_slim()
-        .pip_install("torch", "torchvision", "numpy", "scikit-learn", "wandb", "kagglehub")
+        .pip_install("torch", "torchvision", "numpy", "scikit-learn", "wandb", "swanlab", "kagglehub")
         .workdir("/root")
         .add_local_file(LAB_DIR / "trainer.py", remote_path="/root/trainer.py")
         .add_local_file(LAB_DIR / "model.py", remote_path="/root/model.py")
@@ -87,6 +87,11 @@ def train(
     resume_checkpoint="",
     wandb_run_id="",
     wandb_resume="allow",
+    use_wandb=True,
+    use_swanlab=False,
+    swanlab_mode="cloud",
+    num_workers=8,
+    prefetch_factor=4,
 ):
     os.chdir("/root")
     summary = run_simclr_train(
@@ -104,9 +109,13 @@ def train(
         resume_checkpoint=resume_checkpoint,
         wandb_run_id=wandb_run_id,
         wandb_resume=wandb_resume,
+        use_wandb=use_wandb,
+        use_swanlab=use_swanlab,
+        swanlab_mode=swanlab_mode,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
         data_root="/root/data",
         results_root="/root/results",
-        use_wandb=True,
         backend="modal",
     )
     results.commit()
@@ -129,6 +138,11 @@ def train_baseline(
     weight_decay=1e-4,
     run_name="end2end",
     save_interval=0,
+    use_wandb=True,
+    use_swanlab=False,
+    swanlab_mode="cloud",
+    num_workers=8,
+    prefetch_factor=4,
 ):
     os.chdir("/root")
     summary = run_end2end_train(
@@ -140,9 +154,13 @@ def train_baseline(
         weight_decay=weight_decay,
         run_name=run_name,
         save_interval=save_interval,
+        use_wandb=use_wandb,
+        use_swanlab=use_swanlab,
+        swanlab_mode=swanlab_mode,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
         data_root="/root/data",
         results_root="/root/results",
-        use_wandb=True,
         backend="modal",
     )
     results.commit()
@@ -156,7 +174,17 @@ def train_baseline(
     volumes={"/root/data": data, "/root/results": results} if modal is not None else {},
     secrets=[modal.Secret.from_name("wandb-secret")] if modal is not None else [],
 )
-def resume_classifier(checkpoint_dir, ratio="", encoder="", probe_batch_size=0):
+def resume_classifier(
+    checkpoint_dir,
+    ratio="",
+    encoder="",
+    probe_batch_size=0,
+    use_wandb=True,
+    use_swanlab=False,
+    swanlab_mode="cloud",
+    num_workers=8,
+    prefetch_factor=4,
+):
     os.chdir("/root")
     summary = run_resume_classifier(
         checkpoint_dir=checkpoint_dir,
@@ -164,7 +192,11 @@ def resume_classifier(checkpoint_dir, ratio="", encoder="", probe_batch_size=0):
         encoder=encoder,
         probe_batch_size=probe_batch_size,
         data_root="/root/data",
-        use_wandb=True,
+        use_wandb=use_wandb,
+        use_swanlab=use_swanlab,
+        swanlab_mode=swanlab_mode,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
         backend="modal",
     )
     results.commit()
@@ -177,7 +209,14 @@ def resume_classifier(checkpoint_dir, ratio="", encoder="", probe_batch_size=0):
     timeout=60 * 60 * 2,
     volumes={"/root/data": data, "/root/results": results} if modal is not None else {},
 )
-def eval(ratio="r10", encoder="resnet18", checkpoint_path="", batch_size=256):
+def eval(
+    ratio="r10",
+    encoder="resnet18",
+    checkpoint_path="",
+    batch_size=256,
+    num_workers=8,
+    prefetch_factor=4,
+):
     os.chdir("/root")
     return run_eval(
         ratio=ratio,
@@ -185,6 +224,8 @@ def eval(ratio="r10", encoder="resnet18", checkpoint_path="", batch_size=256):
         checkpoint_path=checkpoint_path,
         batch_size=batch_size,
         data_root="/root/data",
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
 
 
@@ -212,6 +253,10 @@ def main(
     resume_checkpoint="",
     wandb_run_id="",
     wandb_resume="allow",
+    use_swanlab=False,
+    swanlab_mode="cloud",
+    num_workers=8,
+    prefetch_factor=4,
     data_root="",
     results_root="",
     use_wandb=True,
@@ -234,6 +279,10 @@ def main(
     save_interval = as_int(save_interval)
     mixed_precision = as_bool(mixed_precision)
     use_wandb = as_bool(use_wandb)
+    use_swanlab = as_bool(use_swanlab)
+    swanlab_mode = str(swanlab_mode or "cloud")
+    num_workers = as_int(num_workers)
+    prefetch_factor = as_int(prefetch_factor)
 
     if backend == "local":
         return _run_local(
@@ -258,6 +307,10 @@ def main(
             resume_checkpoint=resume_checkpoint,
             wandb_run_id=wandb_run_id,
             wandb_resume=wandb_resume,
+            use_swanlab=use_swanlab,
+            swanlab_mode=swanlab_mode,
+            num_workers=num_workers,
+            prefetch_factor=prefetch_factor,
             data_root=data_root,
             results_root=results_root,
             use_wandb=use_wandb,
@@ -286,6 +339,10 @@ def main(
         resume_checkpoint=resume_checkpoint,
         wandb_run_id=wandb_run_id,
         wandb_resume=wandb_resume,
+        use_swanlab=use_swanlab,
+        swanlab_mode=swanlab_mode,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
 
 
@@ -303,6 +360,8 @@ def _run_local(**kwargs):
             checkpoint_path=kwargs["checkpoint_path"],
             batch_size=kwargs["probe_batch_size"],
             data_root=kwargs["data_root"],
+            num_workers=kwargs["num_workers"],
+            prefetch_factor=kwargs["prefetch_factor"],
         )
         _print(metrics)
         return metrics
@@ -317,6 +376,10 @@ def _run_local(**kwargs):
             probe_batch_size=kwargs["probe_batch_size"],
             data_root=kwargs["data_root"],
             use_wandb=kwargs["use_wandb"],
+            use_swanlab=kwargs["use_swanlab"],
+            swanlab_mode=kwargs["swanlab_mode"],
+            num_workers=kwargs["num_workers"],
+            prefetch_factor=kwargs["prefetch_factor"],
             backend="local",
         )
         _print(summary)
@@ -338,6 +401,10 @@ def _run_local(**kwargs):
                 data_root=kwargs["data_root"],
                 results_root=kwargs["results_root"],
                 use_wandb=kwargs["use_wandb"],
+                use_swanlab=kwargs["use_swanlab"],
+                swanlab_mode=kwargs["swanlab_mode"],
+                num_workers=kwargs["num_workers"],
+                prefetch_factor=kwargs["prefetch_factor"],
                 backend="local",
             )
         payload = summaries if len(ratios) > 1 else summaries[ratios[0]]
@@ -369,6 +436,10 @@ def _run_local(**kwargs):
             data_root=kwargs["data_root"],
             results_root=kwargs["results_root"],
             use_wandb=kwargs["use_wandb"],
+            use_swanlab=kwargs["use_swanlab"],
+            swanlab_mode=kwargs["swanlab_mode"],
+            num_workers=kwargs["num_workers"],
+            prefetch_factor=kwargs["prefetch_factor"],
             backend="local",
         )
     payload = summaries if len(ratios) > 1 else summaries[ratios[0]]
@@ -389,6 +460,11 @@ def _run_modal(**kwargs):
             ",".join(ratios) if ratios else "",
             encoder,
             kwargs["probe_batch_size"],
+            kwargs["use_wandb"],
+            kwargs["use_swanlab"],
+            kwargs["swanlab_mode"],
+            kwargs["num_workers"],
+            kwargs["prefetch_factor"],
         )
         _print(summary)
         return summary
@@ -396,7 +472,14 @@ def _run_modal(**kwargs):
     if kwargs["checkpoint_path"]:
         if len(ratios) != 1:
             raise ValueError("--checkpoint-path can only be used with one --ratio")
-        metrics = eval.remote(ratios[0], encoder, kwargs["checkpoint_path"], kwargs["probe_batch_size"])
+        metrics = eval.remote(
+            ratios[0],
+            encoder,
+            kwargs["checkpoint_path"],
+            kwargs["probe_batch_size"],
+            kwargs["num_workers"],
+            kwargs["prefetch_factor"],
+        )
         _print(metrics)
         return metrics
 
@@ -412,6 +495,11 @@ def _run_modal(**kwargs):
                 kwargs["weight_decay"],
                 run_names[0],
                 kwargs["save_interval"],
+                kwargs["use_wandb"],
+                kwargs["use_swanlab"],
+                kwargs["swanlab_mode"],
+                kwargs["num_workers"],
+                kwargs["prefetch_factor"],
             )
             _print(summary)
             return summary
@@ -428,6 +516,11 @@ def _run_modal(**kwargs):
                 [kwargs["weight_decay"]] * len(ratios),
                 run_names,
                 [kwargs["save_interval"]] * len(ratios),
+                [kwargs["use_wandb"]] * len(ratios),
+                [kwargs["use_swanlab"]] * len(ratios),
+                [kwargs["swanlab_mode"]] * len(ratios),
+                [kwargs["num_workers"]] * len(ratios),
+                [kwargs["prefetch_factor"]] * len(ratios),
             ),
         ):
             summaries[ratio] = summary
@@ -455,6 +548,11 @@ def _run_modal(**kwargs):
             kwargs["resume_checkpoint"],
             kwargs["wandb_run_id"],
             kwargs["wandb_resume"],
+            kwargs["use_wandb"],
+            kwargs["use_swanlab"],
+            kwargs["swanlab_mode"],
+            kwargs["num_workers"],
+            kwargs["prefetch_factor"],
         )
         _print(summary)
         return summary
@@ -477,6 +575,11 @@ def _run_modal(**kwargs):
             [kwargs["resume_checkpoint"]] * len(ratios),
             [kwargs["wandb_run_id"]] * len(ratios),
             [kwargs["wandb_resume"]] * len(ratios),
+            [kwargs["use_wandb"]] * len(ratios),
+            [kwargs["use_swanlab"]] * len(ratios),
+            [kwargs["swanlab_mode"]] * len(ratios),
+            [kwargs["num_workers"]] * len(ratios),
+            [kwargs["prefetch_factor"]] * len(ratios),
         ),
     ):
         summaries[ratio] = summary
@@ -510,6 +613,10 @@ def _build_arg_parser():
     parser.add_argument("--resume-checkpoint", default="")
     parser.add_argument("--wandb-run-id", default="")
     parser.add_argument("--wandb-resume", default="allow")
+    parser.add_argument("--use-swanlab", default=False, type=as_bool)
+    parser.add_argument("--swanlab-mode", default="cloud", choices=["cloud", "local", "disabled"])
+    parser.add_argument("--num-workers", default=8, type=int)
+    parser.add_argument("--prefetch-factor", default=4, type=int)
     parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT))
     parser.add_argument("--results-root", default=str(DEFAULT_RESULTS_ROOT))
     parser.add_argument("--use-wandb", default=True, type=as_bool)

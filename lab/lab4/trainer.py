@@ -83,8 +83,6 @@ def pretrain_simclr(
     device: torch.device,
     loss_fn = nt_xent_loss,
     num_epochs: int = 100,
-    eval_interval: int = 10,
-    eval_dataloader: torch.utils.data.DataLoader = None,
     wandb_run = None,
     log_prefix: str = "pretrain",
     checkpoint_dir = None,
@@ -105,8 +103,11 @@ def pretrain_simclr(
         model.train()
         total_loss = 0.0
         num_samples = 0
+        data_time = 0.0
+        batch_wait_start = time.perf_counter()
         
         for (view_1, view_2) in dataloader:
+            data_time += time.perf_counter() - batch_wait_start
             view_1 = view_1.to(device, non_blocking=True)
             view_2 = view_2.to(device, non_blocking=True)
             
@@ -125,16 +126,21 @@ def pretrain_simclr(
             optimizer.step()
             
             total_loss += loss.item()
+            batch_wait_start = time.perf_counter()
         
         avg_loss = total_loss / len(dataloader)
         if device.type == "cuda":
             torch.cuda.synchronize()
         epoch_time = time.perf_counter() - start_time
+        compute_time = max(epoch_time - data_time, 0.0)
         print(f"Epoch [{global_epoch}], Loss: {avg_loss:.4f}")
         epoch_record = {
             "epoch": global_epoch,
             "loss": avg_loss,
             "epoch_time_sec": epoch_time,
+            "data_time_sec": data_time,
+            "compute_time_sec": compute_time,
+            "data_time_ratio": data_time / epoch_time if epoch_time > 0 else 0.0,
             "samples_per_sec": num_samples / epoch_time,
             "views_per_sec": (2 * num_samples) / epoch_time,
         }
@@ -142,19 +148,12 @@ def pretrain_simclr(
             "epoch": epoch_record["epoch"],
             f"{log_prefix}/loss": epoch_record["loss"],
             f"{log_prefix}/epoch_time_sec": epoch_record["epoch_time_sec"],
+            f"{log_prefix}/data_time_sec": epoch_record["data_time_sec"],
+            f"{log_prefix}/compute_time_sec": epoch_record["compute_time_sec"],
+            f"{log_prefix}/data_time_ratio": epoch_record["data_time_ratio"],
             f"{log_prefix}/samples_per_sec": epoch_record["samples_per_sec"],
             f"{log_prefix}/views_per_sec": epoch_record["views_per_sec"],
         }
-        
-        if eval_dataloader is not None and global_epoch % eval_interval == 0:
-            print("Evaluating classifier...")
-            metrics = evaluate_classifier(model, eval_dataloader, device, "eval")
-            epoch_record["eval"] = metrics
-            log_payload.update({
-                f"{log_prefix}/eval_accuracy": metrics["accuracy"],
-                f"{log_prefix}/eval_f1": metrics["f1"],
-                f"{log_prefix}/eval_loss": metrics["loss"],
-            })
         history.append(epoch_record)
         _log_wandb(log_payload, wandb_run)
         if checkpoint_dir is not None and save_interval > 0 and global_epoch % save_interval == 0:

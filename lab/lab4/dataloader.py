@@ -193,7 +193,6 @@ def get_simclr_cifar10_transform(
     )
     
     transform_list = [
-        v2.ToPILImage(),
         v2.RandomResizedCrop(
             size = image_size,
             scale = (0.08, 1.0), # NOTE: 0.08 is quite agressive for 32x32 images
@@ -226,7 +225,7 @@ def get_simclr_cifar10_transform(
 
 
 def get_cifar10_classification_transform(train: bool = False):
-    transform_list = [v2.ToPILImage()]
+    transform_list = []
     if train:
         transform_list.extend([
             v2.RandomCrop(32, padding=4),
@@ -243,6 +242,10 @@ def get_cifar10_simclr_dataloader(
     data_dir: str = "./data/r10/pretrain.pth",
     batch_size: int = 8192,
     use_blur: bool = False,
+    num_workers: int = 8,
+    prefetch_factor: int = 4,
+    pin_memory: bool = True,
+    worker_num_threads: int = 1,
 ) -> DataLoader:
     
     base_transform = get_simclr_cifar10_transform(use_blur=use_blur)
@@ -250,15 +253,24 @@ def get_cifar10_simclr_dataloader(
     
     images = torch.load(data_dir)
     train_dataset = SimCLRPretrainDataset(images, simclr_transform)
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        num_workers=8,
-        pin_memory=True,
-        persistent_workers=True,
-        multiprocessing_context="spawn",
-        drop_last=True
-    )
+
+    def _worker_init_fn(_worker_id: int):
+        # Avoid CPU thread oversubscription when using multiple DataLoader workers.
+        torch.set_num_threads(worker_num_threads)
+    dataloader_kwargs = {
+        "batch_size": batch_size,
+        "shuffle": True,
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+        "drop_last": True,
+    }
+    if num_workers > 0:
+        dataloader_kwargs.update({
+            "persistent_workers": True,
+            "prefetch_factor": prefetch_factor,
+            "worker_init_fn": _worker_init_fn,
+        })
+    train_loader = DataLoader(train_dataset, **dataloader_kwargs)
     
     return train_loader
 
@@ -267,6 +279,10 @@ def get_cifar10_classification_dataloader(
     data_dir: str = "./data/r10/finetune.pth",
     batch_size: int = 256,
     train: bool = True,
+    num_workers: int = 8,
+    prefetch_factor: int = 4,
+    pin_memory: bool = True,
+    worker_num_threads: int = 1,
 ) -> DataLoader:
     images, labels = torch.load(data_dir)
     dataset = ClassificationTensorDataset(
@@ -274,12 +290,19 @@ def get_cifar10_classification_dataloader(
         labels,
         get_cifar10_classification_transform(train=train),
     )
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=train,
-        num_workers=8,
-        pin_memory=True,
-        persistent_workers=True,
-        multiprocessing_context="spawn",
-    )
+
+    def _worker_init_fn(_worker_id: int):
+        torch.set_num_threads(worker_num_threads)
+    dataloader_kwargs = {
+        "batch_size": batch_size,
+        "shuffle": train,
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+    }
+    if num_workers > 0:
+        dataloader_kwargs.update({
+            "persistent_workers": True,
+            "prefetch_factor": prefetch_factor,
+            "worker_init_fn": _worker_init_fn,
+        })
+    return DataLoader(dataset, **dataloader_kwargs)

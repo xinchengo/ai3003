@@ -34,10 +34,20 @@ from train_utils import (
 )
 
 
-def _wandb_init(use_wandb, **kwargs):
-    if not use_wandb:
+def _wandb_init(use_wandb, use_swanlab=False, swanlab_mode="cloud", **kwargs):
+    if not use_wandb and not use_swanlab:
         return None, None
-    import wandb
+    if use_swanlab:
+        try:
+            import swanlab
+        except ImportError as exc:
+            raise ImportError("Install SwanLab with `pip install swanlab` to use --use-swanlab true.") from exc
+
+        swanlab.sync_wandb(mode=swanlab_mode, wandb_run=use_wandb)
+    try:
+        import wandb
+    except ImportError as exc:
+        raise ImportError("Install Weights & Biases with `pip install wandb`; SwanLab sync_wandb also uses the wandb API.") from exc
 
     return wandb, wandb.init(**kwargs)
 
@@ -66,6 +76,10 @@ def run_simclr_train(
     data_root=None,
     results_root=None,
     use_wandb=True,
+    use_swanlab=False,
+    swanlab_mode="cloud",
+    num_workers=8,
+    prefetch_factor=4,
     backend="local",
 ):
     pretrain_epochs = as_int(pretrain_epochs)
@@ -80,6 +94,10 @@ def run_simclr_train(
     wandb_run_id = str(wandb_run_id or "")
     wandb_resume = str(wandb_resume or "allow")
     use_wandb = as_bool(use_wandb)
+    use_swanlab = as_bool(use_swanlab)
+    swanlab_mode = str(swanlab_mode or "cloud")
+    num_workers = as_int(num_workers)
+    prefetch_factor = as_int(prefetch_factor)
 
     data_root = Path(data_root).expanduser().resolve()
     results_root = Path(results_root).expanduser().resolve()
@@ -134,6 +152,10 @@ def run_simclr_train(
         "data_root": str(data_root),
         "results_root": str(results_root),
         "use_wandb": use_wandb,
+        "use_swanlab": use_swanlab,
+        "swanlab_mode": swanlab_mode,
+        "num_workers": num_workers,
+        "prefetch_factor": prefetch_factor,
         "device": str(dev),
         "checkpoint_dir": str(checkpoint_dir),
         "pretrain_path": str(pretrain_path),
@@ -157,7 +179,12 @@ def run_simclr_train(
     }
     if wandb_run_id:
         wandb_kwargs.update({"id": wandb_run_id, "resume": wandb_resume})
-    wandb, wandb_run = _wandb_init(use_wandb, **wandb_kwargs)
+    wandb, wandb_run = _wandb_init(
+        use_wandb,
+        use_swanlab=use_swanlab,
+        swanlab_mode=swanlab_mode,
+        **wandb_kwargs,
+    )
     if wandb_run is not None:
         config["wandb_run_id"] = wandb_run.id
         write_json(checkpoint_dir / "config.json", config)
@@ -172,16 +199,22 @@ def run_simclr_train(
         str(pretrain_path),
         batch_size=pretrain_batch_size,
         use_blur=use_blur,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
     finetune_loader = get_cifar10_classification_dataloader(
         str(finetune_path),
         batch_size=probe_batch_size,
         train=False,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
     test_loader = get_cifar10_classification_dataloader(
         str(test_path),
         batch_size=probe_batch_size,
         train=False,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
 
     try:
@@ -200,7 +233,6 @@ def run_simclr_train(
             dev,
             loss_fn=loss_fn,
             num_epochs=pretrain_epochs,
-            eval_dataloader=None,
             wandb_run=wandb_run,
             checkpoint_dir=checkpoint_dir,
             save_interval=save_interval,
@@ -287,6 +319,10 @@ def run_end2end_train(
     data_root=None,
     results_root=None,
     use_wandb=True,
+    use_swanlab=False,
+    swanlab_mode="cloud",
+    num_workers=8,
+    prefetch_factor=4,
     backend="local",
 ):
     num_epochs = as_int(num_epochs)
@@ -295,6 +331,10 @@ def run_end2end_train(
     weight_decay = as_float(weight_decay)
     save_interval = as_int(save_interval)
     use_wandb = as_bool(use_wandb)
+    use_swanlab = as_bool(use_swanlab)
+    swanlab_mode = str(swanlab_mode or "cloud")
+    num_workers = as_int(num_workers)
+    prefetch_factor = as_int(prefetch_factor)
     data_root = Path(data_root).expanduser().resolve()
     results_root = Path(results_root).expanduser().resolve()
 
@@ -324,6 +364,10 @@ def run_end2end_train(
         "data_root": str(data_root),
         "results_root": str(results_root),
         "use_wandb": use_wandb,
+        "use_swanlab": use_swanlab,
+        "swanlab_mode": swanlab_mode,
+        "num_workers": num_workers,
+        "prefetch_factor": prefetch_factor,
         "device": str(dev),
         "checkpoint_dir": str(checkpoint_dir),
         "finetune_path": str(finetune_path),
@@ -336,6 +380,8 @@ def run_end2end_train(
 
     wandb, wandb_run = _wandb_init(
         use_wandb,
+        use_swanlab=use_swanlab,
+        swanlab_mode=swanlab_mode,
         project="ai3003-lab4",
         config=config,
         name=f"{ratio}-{encoder}-{run_name}",
@@ -353,11 +399,15 @@ def run_end2end_train(
         str(finetune_path),
         batch_size=batch_size,
         train=True,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
     test_loader = get_cifar10_classification_dataloader(
         str(test_path),
         batch_size=batch_size,
         train=False,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
 
     try:
@@ -420,9 +470,17 @@ def run_resume_classifier(
     probe_batch_size=0,
     data_root=None,
     use_wandb=True,
+    use_swanlab=False,
+    swanlab_mode="cloud",
+    num_workers=8,
+    prefetch_factor=4,
     backend="local",
 ):
     use_wandb = as_bool(use_wandb)
+    use_swanlab = as_bool(use_swanlab)
+    swanlab_mode = str(swanlab_mode or "cloud")
+    num_workers = as_int(num_workers)
+    prefetch_factor = as_int(prefetch_factor)
     data_root = Path(data_root).expanduser().resolve()
     checkpoint_dir = Path(checkpoint_dir).expanduser().resolve()
     config_path = checkpoint_dir / "config.json"
@@ -452,6 +510,10 @@ def run_resume_classifier(
         "test_path": str(test_path),
         "data_root": str(data_root),
         "use_wandb": use_wandb,
+        "use_swanlab": use_swanlab,
+        "swanlab_mode": swanlab_mode,
+        "num_workers": num_workers,
+        "prefetch_factor": prefetch_factor,
     })
 
     dev = get_device()
@@ -462,6 +524,8 @@ def run_resume_classifier(
 
     wandb, wandb_run = _wandb_init(
         use_wandb,
+        use_swanlab=use_swanlab,
+        swanlab_mode=swanlab_mode,
         project="ai3003-lab4",
         config=config,
         name=f"{ratio}-{encoder}-{config.get('run_name', 'simclr')}-resume-classifier",
@@ -478,11 +542,15 @@ def run_resume_classifier(
         str(finetune_path),
         batch_size=probe_batch_size,
         train=False,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
     test_loader = get_cifar10_classification_dataloader(
         str(test_path),
         batch_size=probe_batch_size,
         train=False,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
 
     try:
@@ -545,12 +613,22 @@ def run_resume_classifier(
             wandb.finish()
 
 
-def run_eval(ratio="r10", encoder="resnet18", checkpoint_path="", batch_size=256, data_root=None):
+def run_eval(
+    ratio="r10",
+    encoder="resnet18",
+    checkpoint_path="",
+    batch_size=256,
+    data_root=None,
+    num_workers=8,
+    prefetch_factor=4,
+):
     if not checkpoint_path:
         raise ValueError("checkpoint_path is required for eval")
 
     data_root = Path(data_root).expanduser().resolve()
     batch_size = as_int(batch_size)
+    num_workers = as_int(num_workers)
+    prefetch_factor = as_int(prefetch_factor)
     dev = get_device()
     checkpoint_path = Path(checkpoint_path).expanduser().resolve()
     checkpoint = torch.load(checkpoint_path, map_location=dev)
@@ -560,6 +638,8 @@ def run_eval(ratio="r10", encoder="resnet18", checkpoint_path="", batch_size=256
         str(data_root / ratio / "test.pth"),
         batch_size=batch_size,
         train=False,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
     )
     linear_probe_path = checkpoint_path.parent / "linear_probe.pkl"
     if linear_probe_path.exists():
