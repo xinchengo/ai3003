@@ -78,17 +78,23 @@ def extract_model_state(checkpoint):
     return checkpoint
 
 
-def load_model_state(model, checkpoint, allow_classifier_mismatch=True):
+def load_model_state(model, checkpoint, allow_classifier_mismatch=True, allow_head_mismatch=False):
     state_dict = extract_model_state(checkpoint)
     try:
         model.load_state_dict(state_dict)
     except RuntimeError as exc:
-        if not allow_classifier_mismatch or "classifier" not in str(exc):
+        message = str(exc)
+        can_ignore_classifier = allow_classifier_mismatch and "classifier" in message
+        can_ignore_head = allow_head_mismatch and "projection_head" in message
+        if not (can_ignore_classifier or can_ignore_head):
             raise
         state_dict = {
             key: value
             for key, value in state_dict.items()
-            if not key.startswith("classifier.")
+            if not (
+                (allow_classifier_mismatch and key.startswith("classifier."))
+                or (allow_head_mismatch and key.startswith("projection_head."))
+            )
         }
         model.load_state_dict(state_dict, strict=False)
 

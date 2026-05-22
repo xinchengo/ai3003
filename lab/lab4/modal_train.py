@@ -80,6 +80,11 @@ def train(
     probe_batch_size=256,
     pretrain_lr=1e-3,
     temperature=0.5,
+    loss_name="nt_xent",
+    triplet_margin=1.0,
+    head_hidden_dim=128,
+    head_use_batchnorm=True,
+    projection_dim=64,
     use_blur=False,
     run_name="simclr",
     save_interval=0,
@@ -102,6 +107,11 @@ def train(
         probe_batch_size=probe_batch_size,
         pretrain_lr=pretrain_lr,
         temperature=temperature,
+        loss_name=loss_name,
+        triplet_margin=triplet_margin,
+        head_hidden_dim=head_hidden_dim,
+        head_use_batchnorm=head_use_batchnorm,
+        projection_dim=projection_dim,
         use_blur=use_blur,
         run_name=run_name,
         save_interval=save_interval,
@@ -246,6 +256,11 @@ def main(
     end2end_lr=1e-3,
     weight_decay=1e-4,
     temperature=0.5,
+    loss_name="nt_xent",
+    triplet_margin=1.0,
+    head_hidden_dim=128,
+    head_use_batchnorm=True,
+    projection_dim=64,
     use_blur=False,
     run_name="simclr",
     save_interval=0,
@@ -275,6 +290,10 @@ def main(
     end2end_lr = as_float(end2end_lr)
     weight_decay = as_float(weight_decay)
     temperature = as_float(temperature)
+    triplet_margin = as_float(triplet_margin)
+    head_hidden_dim = as_int(head_hidden_dim)
+    head_use_batchnorm = as_bool(head_use_batchnorm)
+    projection_dim = as_int(projection_dim)
     use_blur = as_bool(use_blur)
     save_interval = as_int(save_interval)
     mixed_precision = as_bool(mixed_precision)
@@ -300,6 +319,11 @@ def main(
             end2end_lr=end2end_lr,
             weight_decay=weight_decay,
             temperature=temperature,
+            loss_name=loss_name,
+            triplet_margin=triplet_margin,
+            head_hidden_dim=head_hidden_dim,
+            head_use_batchnorm=head_use_batchnorm,
+            projection_dim=projection_dim,
             use_blur=use_blur,
             run_name=run_name,
             save_interval=save_interval,
@@ -332,6 +356,11 @@ def main(
         end2end_lr=end2end_lr,
         weight_decay=weight_decay,
         temperature=temperature,
+        loss_name=loss_name,
+        triplet_margin=triplet_margin,
+        head_hidden_dim=head_hidden_dim,
+        head_use_batchnorm=head_use_batchnorm,
+        projection_dim=projection_dim,
         use_blur=use_blur,
         run_name=run_name,
         save_interval=save_interval,
@@ -426,6 +455,11 @@ def _run_local(**kwargs):
             probe_batch_size=kwargs["probe_batch_size"],
             pretrain_lr=kwargs["pretrain_lr"],
             temperature=kwargs["temperature"],
+            loss_name=kwargs["loss_name"],
+            triplet_margin=kwargs["triplet_margin"],
+            head_hidden_dim=kwargs["head_hidden_dim"],
+            head_use_batchnorm=kwargs["head_use_batchnorm"],
+            projection_dim=kwargs["projection_dim"],
             use_blur=kwargs["use_blur"],
             run_name=kwargs["run_name"],
             save_interval=kwargs["save_interval"],
@@ -541,6 +575,11 @@ def _run_modal(**kwargs):
             kwargs["probe_batch_size"],
             kwargs["pretrain_lr"],
             kwargs["temperature"],
+            kwargs["loss_name"],
+            kwargs["triplet_margin"],
+            kwargs["head_hidden_dim"],
+            kwargs["head_use_batchnorm"],
+            kwargs["projection_dim"],
             kwargs["use_blur"],
             kwargs["run_name"],
             kwargs["save_interval"],
@@ -568,6 +607,11 @@ def _run_modal(**kwargs):
             [kwargs["probe_batch_size"]] * len(ratios),
             [kwargs["pretrain_lr"]] * len(ratios),
             [kwargs["temperature"]] * len(ratios),
+            [kwargs["loss_name"]] * len(ratios),
+            [kwargs["triplet_margin"]] * len(ratios),
+            [kwargs["head_hidden_dim"]] * len(ratios),
+            [kwargs["head_use_batchnorm"]] * len(ratios),
+            [kwargs["projection_dim"]] * len(ratios),
             [kwargs["use_blur"]] * len(ratios),
             [kwargs["run_name"]] * len(ratios),
             [kwargs["save_interval"]] * len(ratios),
@@ -606,6 +650,11 @@ def _build_arg_parser():
     parser.add_argument("--end2end-lr", default=1e-3, type=float)
     parser.add_argument("--weight-decay", default=1e-4, type=float)
     parser.add_argument("--temperature", default=0.5, type=float)
+    parser.add_argument("--loss-name", default="nt_xent", choices=["nt_xent", "nt_logistic", "triplet"])
+    parser.add_argument("--triplet-margin", default=1.0, type=float)
+    parser.add_argument("--head-hidden-dim", default=128, type=int)
+    parser.add_argument("--head-use-batchnorm", default=True, type=as_bool)
+    parser.add_argument("--projection-dim", default=64, type=int)
     parser.add_argument("--use-blur", default=False, type=as_bool)
     parser.add_argument("--run-name", default="simclr")
     parser.add_argument("--save-interval", default=0, type=int)

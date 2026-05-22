@@ -13,9 +13,11 @@ from trainer import (
     evaluate_logistic_regression_classifier,
     extract_encoder_features,
     fit_logistic_regression_classifier,
+    nt_logistic_loss,
     nt_xent_loss,
     pretrain_simclr,
     train_end2end,
+    triplet_loss,
 )
 from train_utils import (
     as_bool,
@@ -58,6 +60,50 @@ def _check_paths(*paths):
             raise FileNotFoundError(f"Missing dataset file: {path}")
 
 
+def _build_simclr_model(encoder, head_hidden_dim=128, head_use_batchnorm=True, projection_dim=64):
+    return SimCLRModel(
+        encoder=encoder,
+        head_hidden_dim=head_hidden_dim,
+        head_use_batchnorm=head_use_batchnorm,
+        projection_dim=projection_dim,
+    )
+
+
+def _build_contrastive_loss(loss_name, temperature=0.5, triplet_margin=1.0):
+    loss_name = str(loss_name or "nt_xent").strip().lower().replace("-", "_")
+    aliases = {
+        "ntxent": "nt_xent",
+        "info_nce": "nt_xent",
+        "infonce": "nt_xent",
+        "logistic": "nt_logistic",
+        "contrastive": "nt_logistic",
+        "logistic_contrastive": "nt_logistic",
+    }
+    loss_name = aliases.get(loss_name, loss_name)
+
+    if loss_name == "nt_xent":
+        return loss_name, lambda z1, z2: nt_xent_loss(z1, z2, temperature=temperature)
+    if loss_name == "nt_logistic":
+        return loss_name, lambda z1, z2: nt_logistic_loss(z1, z2, temperature=temperature)
+    if loss_name == "triplet":
+        return loss_name, lambda z1, z2: triplet_loss(z1, z2, margin=triplet_margin)
+    raise ValueError(
+        f"Unsupported loss_name: {loss_name}. "
+        "Use one of: nt_xent, nt_logistic, triplet."
+    )
+
+
+def _head_config_from_checkpoint(checkpoint_dir, checkpoint=None):
+    config = read_json_if_exists(Path(checkpoint_dir) / "config.json", {})
+    if not config and isinstance(checkpoint, dict):
+        config = checkpoint.get("config", {}) or {}
+    return {
+        "head_hidden_dim": config.get("head_hidden_dim", 128),
+        "head_use_batchnorm": config.get("head_use_batchnorm", True),
+        "projection_dim": config.get("projection_dim", 64),
+    }
+
+
 def run_simclr_train(
     ratio="r10",
     encoder="resnet18",
@@ -66,6 +112,11 @@ def run_simclr_train(
     probe_batch_size=256,
     pretrain_lr=1e-3,
     temperature=0.5,
+    loss_name="nt_xent",
+    triplet_margin=1.0,
+    head_hidden_dim=128,
+    head_use_batchnorm=True,
+    projection_dim=64,
     use_blur=False,
     run_name="simclr",
     save_interval=0,
@@ -87,6 +138,10 @@ def run_simclr_train(
     probe_batch_size = as_int(probe_batch_size)
     pretrain_lr = as_float(pretrain_lr)
     temperature = as_float(temperature)
+    triplet_margin = as_float(triplet_margin)
+    head_hidden_dim = as_int(head_hidden_dim)
+    head_use_batchnorm = as_bool(head_use_batchnorm)
+    projection_dim = as_int(projection_dim)
     use_blur = as_bool(use_blur)
     save_interval = as_int(save_interval)
     mixed_precision = as_bool(mixed_precision)
@@ -109,16 +164,30 @@ def run_simclr_train(
     if resume_checkpoint:
         checkpoint_dir = Path(resume_checkpoint).expanduser().resolve().parent
         old_config = read_json_if_exists(checkpoint_dir / "config.json", {})
+        loss_name = old_config.get("loss_name", loss_name)
+        triplet_margin = old_config.get("triplet_margin", triplet_margin)
+        head_hidden_dim = old_config.get("head_hidden_dim", head_hidden_dim)
+        head_use_batchnorm = old_config.get("head_use_batchnorm", head_use_batchnorm)
+        projection_dim = old_config.get("projection_dim", projection_dim)
         if not wandb_run_id:
             wandb_run_id = old_config.get("wandb_run_id", "")
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         checkpoint_dir = results_root / "checkpoints" / f"{ratio}-{encoder}-{run_name}" / timestamp
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    triplet_margin = as_float(triplet_margin)
+    head_hidden_dim = as_int(head_hidden_dim)
+    head_use_batchnorm = as_bool(head_use_batchnorm)
+    projection_dim = as_int(projection_dim)
 
     dev = get_device()
     print(f"Using device: {dev}")
-    model = SimCLRModel(encoder=encoder).to(dev)
+    model = _build_simclr_model(
+        encoder=encoder,
+        head_hidden_dim=head_hidden_dim,
+        head_use_batchnorm=head_use_batchnorm,
+        projection_dim=projection_dim,
+    ).to(dev)
     if resume_checkpoint:
         print(f"Loading checkpoint from {resume_checkpoint}")
         resume_state = torch.load(resume_checkpoint, map_location=dev)
@@ -141,6 +210,8 @@ def run_simclr_train(
         "probe_batch_size": probe_batch_size,
         "pretrain_lr": pretrain_lr,
         "temperature": temperature,
+        "loss_name": loss_name,
+        "triplet_margin": triplet_margin,
         "use_blur": use_blur,
         "pretrain_optimizer": "AdamW",
         "linear_probe": "LogisticRegression",
@@ -225,7 +296,13 @@ def run_simclr_train(
         ):
             optimizer.load_state_dict(resume_state["optimizer_state_dict"])
 
-        loss_fn = lambda z1, z2: nt_xent_loss(z1, z2, temperature=temperature)
+        resolved_loss_name, loss_fn = _build_contrastive_loss(
+            loss_name,
+            temperature=temperature,
+            triplet_margin=triplet_margin,
+        )
+        config["loss_name"] = resolved_loss_name
+        write_json(checkpoint_dir / "config.json", config)
         pretrain_history = pretrain_simclr(
             model,
             pretrain_loader,
@@ -518,8 +595,11 @@ def run_resume_classifier(
 
     dev = get_device()
     print(f"Using device: {dev}")
-    model = SimCLRModel(encoder=encoder).to(dev)
     checkpoint = torch.load(pretrain_checkpoint, map_location=dev)
+    model = _build_simclr_model(
+        encoder=encoder,
+        **_head_config_from_checkpoint(checkpoint_dir, checkpoint),
+    ).to(dev)
     load_model_state(model, checkpoint)
 
     wandb, wandb_run = _wandb_init(
@@ -632,8 +712,16 @@ def run_eval(
     dev = get_device()
     checkpoint_path = Path(checkpoint_path).expanduser().resolve()
     checkpoint = torch.load(checkpoint_path, map_location=dev)
-    model = SimCLRModel(encoder=encoder).to(dev)
-    load_model_state(model, checkpoint, allow_classifier_mismatch=False)
+    model = _build_simclr_model(
+        encoder=encoder,
+        **_head_config_from_checkpoint(checkpoint_path.parent, checkpoint),
+    ).to(dev)
+    load_model_state(
+        model,
+        checkpoint,
+        allow_classifier_mismatch=False,
+        allow_head_mismatch=True,
+    )
     test_loader = get_cifar10_classification_dataloader(
         str(data_root / ratio / "test.pth"),
         batch_size=batch_size,

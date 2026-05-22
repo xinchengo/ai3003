@@ -1,4 +1,5 @@
 import os
+import functools
 
 import torch
 from torchvision import datasets, transforms
@@ -141,6 +142,12 @@ def get_dataset_tensor():
 CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
 CIFAR10_STD = (0.2470, 0.2435, 0.2616)
 
+
+def _worker_init_set_torch_num_threads(_worker_id: int, worker_num_threads: int):
+    # Spawn/forkserver require this function to be picklable (top-level).
+    # Keep signature compatible with DataLoader(worker_init_fn).
+    torch.set_num_threads(worker_num_threads)
+
 class TwoCropsTransform:
     # x -> (t1(x), t2(x))
     
@@ -237,6 +244,7 @@ def get_cifar10_simclr_dataloader(
     prefetch_factor: int = 4,
     pin_memory: bool = True,
     worker_num_threads: int = 1,
+    multiprocessing_context: str | None = None,
 ) -> DataLoader:
     
     base_transform = get_simclr_cifar10_transform(use_blur=use_blur)
@@ -245,9 +253,10 @@ def get_cifar10_simclr_dataloader(
     images = torch.load(data_dir)
     train_dataset = SimCLRPretrainDataset(images, simclr_transform)
 
-    def _worker_init_fn(_worker_id: int):
-        # Avoid CPU thread oversubscription when using multiple DataLoader workers.
-        torch.set_num_threads(worker_num_threads)
+    worker_init_fn = functools.partial(
+        _worker_init_set_torch_num_threads,
+        worker_num_threads=worker_num_threads,
+    )
     dataloader_kwargs = {
         "batch_size": batch_size,
         "shuffle": True,
@@ -255,11 +264,13 @@ def get_cifar10_simclr_dataloader(
         "pin_memory": pin_memory,
         "drop_last": True,
     }
+    if multiprocessing_context is not None:
+        dataloader_kwargs["multiprocessing_context"] = multiprocessing_context
     if num_workers > 0:
         dataloader_kwargs.update({
             "persistent_workers": True,
             "prefetch_factor": prefetch_factor,
-            "worker_init_fn": _worker_init_fn,
+            "worker_init_fn": worker_init_fn,
         })
     train_loader = DataLoader(train_dataset, **dataloader_kwargs)
     
@@ -274,6 +285,7 @@ def get_cifar10_classification_dataloader(
     prefetch_factor: int = 4,
     pin_memory: bool = True,
     worker_num_threads: int = 1,
+    multiprocessing_context: str | None = None,
 ) -> DataLoader:
     images, labels = torch.load(data_dir)
     dataset = ClassificationTensorDataset(
@@ -282,18 +294,22 @@ def get_cifar10_classification_dataloader(
         get_cifar10_classification_transform(train=train),
     )
 
-    def _worker_init_fn(_worker_id: int):
-        torch.set_num_threads(worker_num_threads)
+    worker_init_fn = functools.partial(
+        _worker_init_set_torch_num_threads,
+        worker_num_threads=worker_num_threads,
+    )
     dataloader_kwargs = {
         "batch_size": batch_size,
         "shuffle": train,
         "num_workers": num_workers,
         "pin_memory": pin_memory,
     }
+    if multiprocessing_context is not None:
+        dataloader_kwargs["multiprocessing_context"] = multiprocessing_context
     if num_workers > 0:
         dataloader_kwargs.update({
             "persistent_workers": True,
             "prefetch_factor": prefetch_factor,
-            "worker_init_fn": _worker_init_fn,
+            "worker_init_fn": worker_init_fn,
         })
     return DataLoader(dataset, **dataloader_kwargs)

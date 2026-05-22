@@ -8,6 +8,8 @@ __pycache__
 *.zip
 .env
 _minted
+wandb
+swanlog
 
 lab/lab2/data
 lab/lab3/data
@@ -18,3 +20,4 @@ lab/lab3/analyze_visualization_and_mlp.py
 lab/lab3/analyze_token_gradients.py
 lab/lab3/figures/*.png
 lab/lab4/data
+lab/lab4/results
