@@ -1,0 +1,53 @@
+\documentclass[a4paper]{ctexart}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{makecell}
+\usepackage{anyfontsize}
+
+\title{第二次课后练习}
+\author{PB24000150 李欣宸}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{问题一}
+
+\begin{align*}
+  & \quad \frac{\partial \mathcal L_{\text{rec}}}{\partial w_\mu} = \frac{\partial \mathcal L_{\text{rec}}}{\partial \hat x} \cdot \frac{\partial \hat{x}}{\partial z} \cdot \frac{\partial z}{\partial \mu} \cdot \frac{\partial \mu}{\partial w_\mu} \\
+  & \text{其中} z \sim \mathcal N(\mu, \sigma^2) \\
+  & \implies \frac{\partial z}{\partial \mu}~\text{是没有定义的，无法计算梯度}
+\end{align*}
+
+\section{问题二}
+
+\begin{align*}
+  & \text{此时的关键在于 {\it 确定了 z 的生成方式}} \\
+  & \quad z = \mu + \sigma \cdot \epsilon \implies \frac{\partial z}{\partial \mu} = 1 \\
+  &
+  \begin{aligned}
+    \text{而}&~\mathcal L_{\text{rec}} = \frac{1}{2}(x - \hat x)^2 \implies \frac{\partial \mathcal L_{\text{rec}}}{\partial \hat x} = \hat x - x \\
+    &~\hat x = az + c \implies \frac{\partial \hat x}{\partial z} = a \\
+    &~\mu = w_\mu x + b_\mu \implies \frac{\partial \mu}{\partial w_\mu} = x
+  \end{aligned} \\
+  & \implies \frac{\partial \mathcal L_{\text{rec}}}{\partial w_\mu} = (\hat x - x) \cdot a \cdot 1 \cdot x = a(\hat x - x)x
+\end{align*}
+
+\section{问题三}
+
+\begin{table}[h] \centering \renewcommand{\arraystretch}{1}
+  \begin{tabularx}{\textwidth}{ >{\raggedright\arraybackslash}p{0.22\textwidth} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X }
+    \toprule
+    \textbf{操作} & \textbf{原因} & \textbf{解决方法} \\
+    \midrule
+    使用 \texttt{.argmax()}、\texttt{.sign} 等操作获取预测结果 & 这些操作是离散的，无法计算梯度 & 换成 \texttt{.softmax()}、\texttt{.tanh()} 等连续可微的函数来获取预测结果 \\
+    使用 Python 的原地操作（如 \texttt{x += y}、\text{.zero\_()} 等） & 这些操作导致计算图破坏 & 使用非原地操作（如 \texttt{x = x + y} 等）更新变量 \\
+    错误地使用 \texttt{.item()} 获取 loss 或在计算过程中使用  & \texttt{.item()} 会把 loss 从 \texttt{Tensor} 转化为 Python 的数值类型，导致无法进行反向传播。 & 直接使用 loss 进行反向传播，不要调用 \texttt{.item()}。 \\
+    \bottomrule
+  \end{tabularx} \caption{深度学习中常见的会导致梯度不能正常回传的操作} \label{tab:common_ops}
+\end{table}
+
+\end{document}
