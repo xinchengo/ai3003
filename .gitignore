@@ -21,3 +21,4 @@ lab/lab3/analyze_token_gradients.py
 lab/lab3/figures/*.png
 lab/lab4/data
 lab/lab4/results
+lab/final/experiments
