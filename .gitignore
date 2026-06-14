@@ -10,6 +10,8 @@ __pycache__
 _minted
 wandb
 swanlog
+.cache
+.mplconfig
 
 lab/lab2/data
 lab/lab3/data
